@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Incident Response Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #333; margin-bottom: 20px; }
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .metric-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .metric-card h3 { color: #666; font-size: 14px; margin-bottom: 10px; }
+        .metric-card .value { font-size: 32px; font-weight: bold; color: #333; }
+        .incidents { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .incident { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .incident:last-child { border-bottom: none; }
+        .incident-title { font-weight: bold; color: #333; }
+        .incident-meta { color: #666; font-size: 14px; margin-top: 5px; }
+        .severity { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .severity.critical { background: #ff4444; color: white; }
+        .severity.high { background: #ff9800; color: white; }
+        .severity.medium { background: #ffc107; color: black; }
+        .severity.low { background: #4caf50; color: white; }
+        .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px; }
+        .status.open { background: #2196f3; color: white; }
+        .status.resolved { background: #4caf50; color: white; }
+        .sla-violations { background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800; }
+        .refresh-btn { background: #2196f3; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-bottom: 20px; }
+        .refresh-btn:hover { background: #1976d2; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 Incident Response Dashboard</h1>
+        
+        <button class="refresh-btn" onclick="loadDashboard()">🔄 Refresh Data</button>
+        
+        <div class="metrics" id="metrics"></div>
+        
+        <div class="sla-violations" id="sla-violations" style="display: none;">
+            <h3>⚠️ SLA Violations</h3>
+            <div id="violations-content"></div>
+        </div>
+        
+        <div class="incidents">
+            <h2>Recent Incidents</h2>
+            <div id="incidents-list"></div>
+        </div>
+    </div>
+    
+    <script>
+        async function loadDashboard() {
+            try {
+                const [metricsRes, incidentsRes, slaRes] = await Promise.all([
+                    fetch('/api/metrics'),
+                    fetch('/api/incidents'),
+                    fetch('/api/sla-status')
+                ]);
+                
+                const metrics = await metricsRes.json();
+                const incidents = await incidentsRes.json();
+                const slaStatus = await slaRes.json();
+                
+                displayMetrics(metrics);
+                displayIncidents(incidents);
+                displaySLAViolations(slaStatus);
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+            }
+        }
+        
+        function displayMetrics(metrics) {
+            const metricsDiv = document.getElementById('metrics');
+            metricsDiv.innerHTML = `
+                <div class="metric-card">
+                    <h3>Total Incidents</h3>
+                    <div class="value">${metrics.total_incidents}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Open Incidents</h3>
+                    <div class="value">${metrics.open_incidents}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Resolved Incidents</h3>
+                    <div class="value">${metrics.resolved_incidents}</div>
+                </div>
+                <div class="metric-card">
+                    <h3>Critical Open</h3>
+                    <div class="value">${metrics.by_severity.critical || 0}</div>
+                </div>
+            `;
+        }
+        
+        function displayIncidents(incidents) {
+            const listDiv = document.getElementById('incidents-list');
+            if (incidents.length === 0) {
+                listDiv.innerHTML = '<p>No incidents found.</p>';
+                return;
+            }
+            
+            listDiv.innerHTML = incidents.map(inc => `
+                <div class="incident">
+                    <div>
+                        <div class="incident-title">${inc.title}</div>
+                        <div class="incident-meta">
+                            Created: ${new Date(inc.created_at).toLocaleString()} | 
+                            Assigned: ${inc.assigned_to}
+                        </div>
+                    </div>
+                    <div>
+                        <span class="severity ${inc.severity}">${inc.severity.toUpperCase()}</span>
+                        <span class="status ${inc.status}">${inc.status.toUpperCase()}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function displaySLAViolations(slaStatus) {
+            const violationsDiv = document.getElementById('sla-violations');
+            const contentDiv = document.getElementById('violations-content');
+            
+            if (slaStatus.total_violations > 0) {
+                violationsDiv.style.display = 'block';
+                contentDiv.innerHTML = slaStatus.violations.map(v => `
+                    <div style="margin-top: 10px;">
+                        <strong>${v.title}</strong> (${v.severity}) - 
+                        Age: ${v.age_minutes} minutes - 
+                        Violations: ${v.violations.join(', ')}
+                    </div>
+                `).join('');
+            } else {
+                violationsDiv.style.display = 'none';
+            }
+        }
+        
+        loadDashboard();
+        setInterval(loadDashboard, 30000);
+    </script>
+</body>
+</html>
